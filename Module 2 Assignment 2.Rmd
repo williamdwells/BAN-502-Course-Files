@@ -1,0 +1,154 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# David Wells
+## BAN 502
+### Module 2 Assignment 2
+
+```{r Load Libraries, echo=FALSE, results= FALSE, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(glmnet)
+library(GGally)
+library(ggcorrplot)
+library(MASS)
+library(car)
+library(lubridate)
+library(lmtest)
+```
+
+```{r Task 1}
+bike <- read_csv("~/BAN 502/Module 2/bike_cleaned.csv")
+
+bike = bike %>% mutate(dteday = mdy(dteday)) 
+
+bike <- bike %>%
+  mutate_if(sapply(bike, is.character), as.factor)
+
+bike <- bike %>%
+  mutate(hr = as.factor(hr))
+
+#bike <- bike %>%
+  #mutate_if(sapply(bike, is.factor), as.numeric)
+
+
+str(bike)
+
+# We convert 'hr' to a factor because the number in 'hr' refers to an hour of the day. In this case, the hour is a categorical variable and therefore it makes sense to treat it as a factor rather than a number.
+```
+
+```{r Task 2}
+ggcorr(bike, label="TRUE", label_round = 2)
+
+# Both 'temp' and 'atemp' appear to be most correlated with 'count'.
+```
+
+```{r Task 3}
+ggplot(bike,aes(x=hr,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = hr")
+
+ggplot(bike,aes(x=season,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = season")
+
+ggplot(bike,aes(x=mnth,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = mnth")
+
+ggplot(bike,aes(x=holiday,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = holiday")
+
+ggplot(bike,aes(x=weekday,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = weekday")
+
+ggplot(bike,aes(x=workingday,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = workingday")
+
+ggplot(bike,aes(x=weathersit,y=count)) + geom_boxplot() + theme_bw() + ggtitle("Variable = weathersit")
+
+# The variable 'hr' appears to affect 'count' due to the variability of count given the time of day.
+# The variable 'season' appears to not significantly affect 'count', as it seems bike ridership is fairly consistent across seasons.
+# The variable 'mnth' appears to affect 'count'. Ridership varies month to month with the Winter months (Dec, Jan, Feb, and Mar) showing the greatest difference from the remaining months.
+# The variable 'holiday' appears not to have a significant effect as both Holiday and NonHoliday ridership remains constant between them.
+# The variable 'weekday' appears not to have a significant effect as ridership remains constant among the days of the week.
+# The variable 'workingday' appears not to have a significant effect as ridership remains constant between both types of days.
+# The variable 'weathersit' appears to affect 'count'. Ridership on days with HeavyPrecip or LightPrecip have lower values than the other two options.
+```
+
+```{r Task 4}
+bike_simple = recipe(count ~ hr, bike)
+bike_simple
+
+lm_model = 
+  linear_reg()  
+  set_engine
+  
+  lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_simple)
+  
+lm_fit = fit(lm_wflow, bike)
+
+summary(lm_fit$fit$fit$fit)
+
+# 'hr' seems to be a good predictor of 'count', as each hour is significant to at least p<0.01. However, the Adjusted R-square value is 0.5008, which leads me to believe it's not the only predictor or even the best single predictor.
+```
+
+```{r Task 5}
+bike_recipe2 = recipe(count ~., bike) %>% 
+  step_rm(instant,dteday,registered,casual) %>%
+  step_dummy(all_nominal()) %>%
+  step_center(temp,atemp,hum,windspeed) %>% 
+  step_scale(temp,atemp,hum,windspeed)
+  
+ridge_model =  
+  linear_reg(mixture = 0) %>% 
+  set_engine("glmnet") 
+
+ridge_wflow = 
+  workflow() %>% 
+  add_model(ridge_model) %>% 
+  add_recipe(bike_recipe2)
+
+ridge_fit = fit(ridge_wflow, bike)
+
+ridge_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  
+ridge_fit
+
+ridge_fit2 = ridge_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  %>% 
+  coef(s = 82)
+ridge_fit2
+
+# I chose a coefficient 's=82' as once Lambda approached 82, I felt there was little gain to be had. The difference between this value and subsequent smaller Lambdas was less than 0.30 and approaching zero.
+```
+
+```{r Task 6}
+bike_recipe3 = recipe(count ~., bike) %>% 
+  step_rm(instant,dteday,registered,casual) %>%
+  step_dummy(all_nominal()) %>%
+  step_center(temp,atemp,hum,windspeed) %>% 
+  step_scale(temp,atemp,hum,windspeed)
+  
+lasso_model =  
+  linear_reg(mixture = 1) %>% 
+  set_engine("glmnet") 
+
+lasso_wflow = 
+  workflow() %>% 
+  add_model(lasso_model) %>% 
+  add_recipe(bike_recipe3)
+
+lasso_fit = fit(lasso_wflow, bike)
+
+lasso_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  
+lasso_fit
+
+lasso_fit2 = lasso_fit %>%
+  pull_workflow_fit() %>%
+  pluck("fit")  %>% 
+  coef(s = 0.639)
+lasso_fit2
+```
+
+# Using the Lasso model with the Lambda I chose [coef(s = 0.639)], I was able to exclude certain variables from the model, whereas with the Ridge model, I was not able to do so. 
