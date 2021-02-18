@@ -1,0 +1,86 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# Module 3 Assignment 1
+# David Wells
+# 
+```{r Libraries, message=FALSE}
+#Load Libraries
+
+library("tidyverse")
+library("lubridate")
+library("tidymodels")
+```
+
+```{r Data}
+# Read data in 
+
+bike <- read_csv("C:/Users/wdavi/Documents/BAN 502/Module 3/bike_cleaned.csv")
+
+bike = bike %>% mutate(dteday = mdy(dteday)) 
+
+bike <- bike %>%
+  mutate_if(sapply(bike, is_character), as_factor)
+
+bike <- bike %>%
+  mutate(hr = as_factor(hr))
+```
+
+### Task_1
+```{r Task_1}
+set.seed(1234)
+bike_split = initial_split(bike, prob = 0.70, strata = count)
+train = training(bike_split)
+test = testing(bike_split)
+```
+
+### Task_2
+```{r Task_2}
+# In the Train dataset there are 13036 rows. In the Test dataset there are 4343 rows.
+```
+
+### Task_3
+```{r Task_3}
+bike_recipe = recipe(count ~., bike) %>% 
+  step_rm(instant,dteday,registered,casual) %>%
+  step_dummy(all_nominal()) %>%
+  step_center(all_predictors()) %>% 
+  step_scale(all_predictors())
+
+lm_model =  
+  linear_reg() %>% 
+  set_engine("lm") 
+
+lm_wflow = 
+  workflow() %>% 
+  add_model(lm_model) %>% 
+  add_recipe(bike_recipe)
+
+lm_fit = fit(lm_wflow, train)
+
+summary(lm_fit$fit$fit$fit)
+```
+
+### Task_ _4
+```{r Task_4}
+predict_train = lm_fit %>% predict(train)
+
+ggplot(predict_train, aes(.pred)) +
+  geom_histogram()
+
+# Based upon my model, it appears that the distribution of predictions peak around 100 and again at around 300.THe data are not normally-distributed.
+
+lm_fit %>% predict(train) %>% bind_cols(train) %>% metrics(truth = count, estimate = .pred)
+
+```
+
+### Task_5
+```{r Task_5}
+lm_fit %>% predict(test) %>% bind_cols(test) %>% metrics(truth = count, estimate = .pred)
+
+# Applying the model on the testing set, we get an R-squared of 0.6292. This is close to the Adjusted R-squared of 0.6315 for the training dataset.
+```
+
+
