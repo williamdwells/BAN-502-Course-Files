@@ -1,0 +1,63 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# David Wells
+## Module 4 Assignment 2
+
+```{r Load_Libraries}
+library(tidyverse)
+library(VIM)
+library(mice)
+library(skimr)
+```
+
+```{r Read-in Data}
+class_grades <- read_csv("C:/Users/wdavi/Documents/BAN 502/Module 4/class-grades.csv")
+```
+
+```{r Task 1}
+str(class_grades)
+summary(class_grades)
+skim(class_grades)
+
+# *Tutorial*, *MidTerm*, *TakeHome*, and *Final* all have missing values
+```
+
+```{r Task 2}
+vim_plot = aggr(class_grades, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=.7)
+
+# One student is missing both *Midterm* and *TakeHome*
+```
+
+```{r Task 3}
+grades_rowdel = class_grades %>% drop_na() 
+skim(grades_rowdel)
+
+# 89 rows remain
+```
+
+```{r Task 4}
+grades_coldel = class_grades %>% select(-Tutorial,-Midterm,-TakeHome,-Final) 
+vim_plot = aggr(grades_coldel, numbers = TRUE, prop = c(TRUE, FALSE),cex.axis=.7)
+skim(grades_coldel)
+
+# 2 Variables remain
+```
+
+```{r Task 5}
+# Row-wise deletion seems the best course of action. This way we only lose 10 records with incomplete data, rather than entire columns of data that were otherwise useful for analysis.
+```
+
+```{r Task 6}
+set.seed(123) #sets seed for random number generator
+imp_class = mice(class_grades, m=5, method='pmm', printFlag=FALSE)
+summary(imp_class)
+
+grades_complete = complete(imp_class) 
+summary(grades_complete)
+
+# The average for *Final* was 68.33.
+```
+

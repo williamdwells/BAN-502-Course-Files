@@ -1,0 +1,229 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# David Wells
+## Module 4 Assignment 3
+
+```{r Load Libraries, message=FALSE}
+library(tidyverse)
+library(tidymodels)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(RColorBrewer)
+```
+
+```{r Load-in Data}
+parole <- read_csv("C:/Users/wdavi/Documents/BAN 502/Module 4/parole.csv")
+
+parole = parole %>% mutate(male = as_factor(male)) %>% 
+  mutate(male = fct_recode(male, "Male" = "0", "Female" = "1" )) 
+
+parole = parole %>% mutate(race = as_factor(race)) %>% 
+  mutate(race = fct_recode(race, "White" = "1", "Other" = "2" )) 
+
+parole = parole %>% mutate(state = as_factor(state)) %>% 
+  mutate(state = fct_recode(state, "Other State" = "1", "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4" )) 
+
+parole = parole %>% mutate(multiple.offenses = as_factor(multiple.offenses)) %>% 
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "No" = "0", "Yes" = "1" ))
+
+parole = parole %>% mutate(crime = as_factor(crime)) %>% 
+  mutate(crime = fct_recode(crime, "Other Crime" = "1", "Larceny" = "2", "Drug-related" = "3", "Driving-related" = "4" ))
+
+parole = parole %>% mutate(violator = as_factor(violator)) %>% 
+  mutate(violator = fct_recode(violator, "Completed Parole" = "0", "Violated Parole" = "1" )) 
+
+str(parole)
+```
+
+```{r Task 1}
+set.seed(12345) 
+parole_split = initial_split(parole, prob = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+
+```{r Task 2}
+parole_recipe = recipe(violator ~., train)
+
+tree_model = decision_tree() %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+parole_wflow = 
+  workflow() %>% 
+  add_model(tree_model) %>% 
+  add_recipe(parole_recipe)
+
+parole_fit = fit(parole_wflow, train)
+
+tree = parole_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+rpart.plot(tree,tweak = 1.2,gap=0,space=0)
+```
+
+```{r Task 3}
+# I preface this explanation by saying I had a hard time reading the tree, due to the size of the text. If I read the tree correctly, I would categorize this person as a parole violator. I first look to see what state this person is in, the tree groups the states into *Louisiana* and all others. From there I look to see if this person had multiple offenses...if so I then look to the amount of time they spent in prison, with the tree making the divide at either 4.3 or 4.8 years...I can't really tell. Either way, with the person in question having served 5 years in prison, I would then see he or she is categorized by the tree into the *Violated Parole* bin.
+```
+
+```{r Task 4}
+parole_fit$fit$fit$fit$cptable
+
+# It appears that 14 splits the model used provides the optimal xerror of 1.101695. However, 11 splits also seems to provide the same xerror. It could be argued 11 splits, while having a higher rel error, may be optimal as the xerror doesn't change and it provides fewer splits.
+```
+
+```{r Task 5}
+set.seed(123)
+folds = vfold_cv(train, v = 5)
+
+parole_recipe2 = recipe(violator ~., train)
+  
+tree_model2 = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+tree_grid2 = grid_regular(cost_complexity(),
+                          levels = 25) 
+
+parole_wflow2 = 
+  workflow() %>% 
+  add_model(tree_model2) %>% 
+  add_recipe(parole_recipe2)
+
+tree_res = 
+  parole_wflow2 %>% 
+  tune_grid(
+    resamples = folds,
+    grid = tree_grid2
+    )
+
+tree_res
+
+tree_res %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+
+best_tree = tree_res %>%
+  select_best("accuracy")
+
+best_tree
+
+# From the analysis, it appears a cp=0.1 is the optimal value.
+```
+
+```{r Task 7}
+final_wf = 
+  parole_wflow2 %>% 
+  finalize_workflow(best_tree)
+
+final_fit = fit(final_wf, train)
+
+tree = final_fit %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+#fancyRpartPlot(tree, tweak = 1.5) 
+```
+
+```{r Task 8}
+treepred = predict(final_fit, train, type = "class")
+head(treepred)
+
+confusionMatrix(treepred$.pred_class,train$violator,positive="Completed Parole") 
+
+# The accuracy of the tree is 0.8836, the same as the naive rate. 
+```
+
+```{r Task 9}
+# Read In Data
+blood <- read_csv("C:/Users/wdavi/Documents/BAN 502/Module 4/Blood.csv")
+
+# Mutate Data
+blood = blood %>% mutate(DonatedMarch = as_factor(DonatedMarch)) %>% 
+  mutate(DonatedMarch = fct_recode(DonatedMarch, "No" = "0", "Yes" = "1" ))
+
+# Split Data
+set.seed(1234) 
+blood_split = initial_split(blood, prop = 0.7, strata = DonatedMarch)
+train2 = training(blood_split) 
+test2 = testing(blood_split)
+
+# Create Classification Tree
+set.seed(1234)
+folds2 = vfold_cv(train2, v = 5)
+
+blood_recipe = recipe(DonatedMarch ~., train2)
+  
+tree_model3 = decision_tree(cost_complexity = tune()) %>% 
+  set_engine("rpart", model = TRUE) %>% 
+  set_mode("classification")
+
+tree_grid3 = grid_regular(cost_complexity(),levels = 25) 
+
+blood_wflow = 
+  workflow() %>% 
+  add_model(tree_model3) %>% 
+  add_recipe(blood_recipe)
+
+tree_res3 = 
+  blood_wflow %>% 
+  tune_grid(
+    resamples = folds2,
+    grid = tree_grid3)
+
+tree_res3
+
+tree_res3 %>%
+  collect_metrics() %>%
+  ggplot(aes(cost_complexity, mean)) +
+  geom_line(size = 1.5, alpha = 0.6) +
+  geom_point(size = 2) +
+  facet_wrap(~ .metric, scales = "free", nrow = 2) 
+
+best_tree2 = tree_res3 %>%
+  select_best("accuracy")
+
+best_tree2
+
+# The optimal cp appears to be around 0.015, based on the graph. The actual optimal cp = 0.017.
+```
+```{r Task 10}
+final_wf2 = 
+  blood_wflow %>% 
+  finalize_workflow(best_tree2)
+
+final_fit2 = fit(final_wf2, train2)
+
+tree2 = final_fit2 %>% 
+  pull_workflow_fit() %>% 
+  pluck("fit")
+
+fancyRpartPlot(tree2, tweak = 1.5) 
+```
+
+```{r Task 11}
+# Testing Set Accuracy
+
+treepred2 = predict(final_fit2, test2, type = "class")
+head(treepred2)
+
+confusionMatrix(treepred2$.pred_class,test2$DonatedMarch,positive="Yes") 
+
+# Training Set Accuracy
+treepred3 = predict(final_fit2, train2, type = "class")
+head(treepred3)
+
+confusionMatrix(treepred3$.pred_class,train2$DonatedMarch,positive="Yes")
+
+# The training set had an accuracy of 0.8053. The testing set had an accuracy 0.7812. Both were higher than the naive accuracy rate of 0.7634. Not too great I would assume, but better than outright guessing.
+```
+
