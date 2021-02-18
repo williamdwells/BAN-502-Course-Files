@@ -1,0 +1,240 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+# David Wells
+## Module 3 Assignment 2
+
+```{r Load_Libraries, echo= FALSE, message=FALSE}
+
+library(tidyverse)
+library(tidymodels)
+library(e1071) 
+library(ROCR)
+```
+
+### Read-in Data and Convert
+```{r Read-in Data and Convert}
+parole <- read_csv("C:/Users/wdavi/Documents/BAN 502/Module 3/parole.csv")
+
+parole = parole %>% mutate(male = as_factor(male)) %>% 
+  mutate(male = fct_recode(male, "Male" = "0", "Female" = "1" )) 
+
+parole = parole %>% mutate(race = as_factor(race)) %>% 
+  mutate(race = fct_recode(race, "White" = "1", "Other" = "2" )) 
+
+parole = parole %>% mutate(state = as_factor(state)) %>% 
+  mutate(state = fct_recode(state, "Other State" = "1", "Kentucky" = "2", "Louisiana" = "3", "Virginia" = "4" )) 
+
+parole = parole %>% mutate(multiple.offenses = as_factor(multiple.offenses)) %>% 
+  mutate(multiple.offenses = fct_recode(multiple.offenses, "No" = "0", "Yes" = "1" ))
+
+parole = parole %>% mutate(crime = as_factor(crime)) %>% 
+  mutate(crime = fct_recode(crime, "Other Crime" = "1", "Larceny" = "2", "Drug-related" = "3", "Driving-related" = "4" ))
+
+parole = parole %>% mutate(violator = as_factor(violator)) %>% 
+  mutate(violator = fct_recode(violator, "Completed Parole" = "0", "Violated Parole" = "1" )) 
+
+str(parole)
+```
+
+### Task 1
+```{r Task 1}
+set.seed(12345) 
+parole_split = initial_split(parole, prob = 0.70, strata = violator)
+train = training(parole_split)
+test = testing(parole_split)
+```
+
+### Task 2
+```{r}
+ggplot(train,aes(x=multiple.offenses, fill = violator)) + geom_bar(position="fill")
+
+t1 = table(parole$violator,parole$multiple.offenses)
+prop.table(t1, margin = 2)
+t1
+
+ggplot(train,aes(x=crime, fill = violator)) + geom_bar(position="fill")
+
+t2 = table(parole$violator,parole$crime)
+prop.table(t2, margin = 2)
+t2
+
+ggplot(train,aes(x=time.served, fill = violator)) + geom_bar(position="fill")
+
+t3 = table(parole$violator,parole$time.served)
+prop.table(t3, margin = 2)
+t3
+
+ggplot(train,aes(x=male, fill = violator)) + geom_bar(position="fill")
+
+t4 = table(parole$violator,parole$male)
+prop.table(t4, margin = 2)
+t4
+
+# My process involved thinking logically about what might affect parole violations. I first thought individuals with multiple offenses may be more willing to violate parole, as they've shown a willingness to commit multiple crimes in the first place. I then decided to look at whether the type of crime a person committed would affect parole violations...thinking those who committed a drug-related crime might be more likely to violate conditions of parole (by taking or using drugs, for example). I then decided to see how a person's time served would affect parole violations, thinking a person who spent more time in prison may be less willing to go back and therefore stick to the parole conditions. Finally, as a shot in the dark, I looked to see if gender had any affect on the probability of recidivism.
+```
+
+### Task 3
+```{r Task 3}
+parole_model = 
+  logistic_reg(mode = "classification") %>% 
+  set_engine("glm") 
+
+parole_recipe = recipe(violator ~ time.served, train)
+
+logreg_wf = workflow() %>%
+  add_recipe(parole_recipe) %>% 
+  add_model(parole_model)
+
+parole_fit = fit(logreg_wf, train)
+
+summary(parole_fit$fit$fit$fit)
+
+# Looking at the model data, I believe "time.served" to be a decent predictor of "violator". It appears from the model, the less time served the more likely one is to be a parole violator. AIC for this model is 364.55.
+```
+
+### Task 4
+```{r Task 4}
+#Model 2
+parole_model2 = 
+  logistic_reg(mode = "classification") %>% 
+  set_engine("glm") 
+
+parole_recipe2 = recipe(violator ~ time.served + crime, train)
+
+logreg_wf2 = workflow() %>%
+  add_recipe(parole_recipe2) %>% 
+  add_model(parole_model2)
+
+parole_fit2 = fit(logreg_wf2, train)
+
+summary(parole_fit2$fit$fit$fit)
+
+# Model 3
+parole_model3 = 
+  logistic_reg(mode = "classification") %>% 
+  set_engine("glm") 
+
+parole_recipe3 = recipe(violator ~ time.served + crime + multiple.offenses, train)
+
+logreg_wf3 = workflow() %>%
+  add_recipe(parole_recipe3) %>% 
+  add_model(parole_model3)
+
+parole_fit3 = fit(logreg_wf3, train)
+
+summary(parole_fit3$fit$fit$fit)
+
+# From the model tests, it looks like Model 3 improves on my initial model, but only slightly at an AIC of 364.22 compared to my original Model 1 AIC of 364.55. I assume there is a better model here than what I have selected.
+```
+
+### Task 5
+```{r Task 5}
+parole_model4 = 
+  logistic_reg(mode = "classification") %>% 
+  set_engine("glm") 
+
+parole_recipe4 = recipe(violator ~ state + multiple.offenses + race, train)
+
+logreg_wf4 = workflow() %>%
+  add_recipe(parole_recipe4) %>% 
+  add_model(parole_model4)
+
+parole_fit4 = fit(logreg_wf4, train)
+
+summary(parole_fit4$fit$fit$fit)
+
+# This model better fits the data than my previous models. The AIC for this model is 289.99, whereas my best model had an AIC of 364.22. 
+
+# The variables "state" and "multiple.offenses" seem to be significant.
+```
+
+### Task 6
+```{r Task 6}
+newdata1 = data.frame(state = "Louisiana", multiple.offenses = "Yes", race = "White" )
+predict(parole_fit4, newdata1, type="prob")
+# Probability of parole violation = 0.44
+
+newdata2 = data.frame(state = "Kentucky", multiple.offenses = "No", race = "Other" )
+predict(parole_fit4, newdata2, type="prob")
+# Probability of parole violation = 0.15
+```
+
+### Task 7
+```{r Task 7}
+predictions = predict(parole_fit4, parole, type="prob")
+head(predictions)
+
+predictions = predict(parole_fit4, parole, type="prob")[2]
+head(predictions)
+
+ROCRpred = prediction(predictions, parole$violator) 
+
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+
+opt.cut = function(perf, pred){
+    cut.ind = mapply(FUN=function(x, y, p){
+        d = (x - 0)^2 + (y-1)^2
+        ind = which(d == min(d))
+        c(sensitivity = y[[ind]], specificity = 1-x[[ind]], 
+            cutoff = p[[ind]])
+    }, perf@x.values, perf@y.values, pred@cutoffs)
+}
+print(opt.cut(ROCRperf, ROCRpred))
+```
+
+### Task 8
+```{r Task 8}
+t5 = table(parole$violator,predictions > 0.1070172)
+
+t5
+
+# Accuracy
+(t5[1,1]+t5[2,2])/nrow(parole)
+
+# Sensitivity
+t5[2,2]/(t5[2,2]+t5[1,2])
+
+# Specificity
+t5[1,1]/(t5[1,1]+t5[2,1])
+
+# Individuals who successfully completed parole may be categorized as not having complete parole.
+```
+
+### Task 9
+```{r Task 9}
+t6 = table(parole$violator,predictions > 0.5)
+t6
+(t6[1,1]+t6[2,2])/nrow(parole)
+
+t6 = table(parole$violator,predictions > 0.6)
+t6
+(t6[1,1])/nrow(parole) # I got an error here where I had no TRUE values, so I removed t6[2,2] from the equation.
+
+t6 = table(parole$violator,predictions > 0.4)
+t6
+(t6[1,1]+t6[2,2])/nrow(parole)
+
+# I will pick >0.5
+```
+
+### Task 10
+```{r Task 10}
+t6 = table(parole$violator,predictions > 0.5)
+t6
+(t6[1,1]+t6[2,2])/nrow(parole)
+
+# Accuracy
+(t6[1,1]+t6[2,2])/nrow(parole)
+
+# Sensitivity
+t6[2,2]/(t6[2,2]+t5[1,2])
+
+# Specificity
+t6[1,1]/(t6[1,1]+t5[2,1])
+```
+
+
